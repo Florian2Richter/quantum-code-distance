@@ -4,44 +4,95 @@ Brute-force search (or heuristic) for minimal logical operator weight.
 
 import itertools
 import numpy as np
-from .utils import is_logical_op
+from .utils import (
+    symplectic_product,
+    is_in_stabilizer_group,
+    symplectic_weight,
+    is_logical_vec,
+    is_logical_op  # Keep for backward compatibility
+)
 
 
 def find_distance(tableau: np.ndarray) -> int:
     """
-    Find the minimum weight of a logical operator (code distance).
-    WARNING: NP-complete, exponential in L for brute force.
+    Find the minimal qubit-weight of a logical operator.
+    We now enumerate binary vectors v of length 2L, 
+    grouped by qubit-weight via symplectic_weight().
     """
     L = tableau.shape[1] // 2
     
-    # Early exit if no logical qubits
+    # Early exit: if rank >= L, no logicals at all
     if tableau.shape[0] >= L:
         return 0
-    
-    # Start from weight 1 and increase until we find a logical operator
+
+    # Precompute all non-zero single-qubit symplectic patterns
+    # (X=(1,0), Z=(0,1), Y=(1,1)) for convenience
+    single_qubit_patterns = [(1, 0), (0, 1), (1, 1)]
+
+    # For each target weight w = 1..L
     for w in range(1, L + 1):
-        print(f"  Searching weight {w} operators...")
-        for positions in itertools.combinations(range(L), w):
-            if is_logical_op(positions, tableau):
-                return w
-    
-    # If no logical operator found (shouldn't happen for valid codes)
+        print(f"  Searching symplectic vectors of qubit-weight {w}...")
+
+        # 1) Choose which w qubits are non-identity
+        for qubit_positions in itertools.combinations(range(L), w):
+
+            # 2) For each assignment of X/Z/Y on those positions
+            for labels in itertools.product(single_qubit_patterns, repeat=w):
+                # build the 2L-vector
+                v = np.zeros(2 * L, dtype=int)
+                for i, (qx, qz) in zip(qubit_positions, labels):
+                    v[i] = qx      # X-bit
+                    v[i + L] = qz  # Z-bit
+
+                # 3) test if logical
+                if is_logical_vec(v, tableau):
+                    return w
+
     return L
 
 
-def find_logical_operators(tableau: np.ndarray, max_weight: int = None) -> list[tuple]:
+def find_logical_operators(tableau: np.ndarray, max_weight: int = None) -> list[np.ndarray]:
     """
     Find all logical operators up to a given weight.
-    Useful for debugging and understanding the code structure.
+    Returns list of symplectic vectors instead of position tuples.
     """
     L = tableau.shape[1] // 2
     if max_weight is None:
         max_weight = min(L, 5)  # Default limit to avoid exponential explosion
-    
+
     logical_ops = []
+    single_qubit_patterns = [(1, 0), (0, 1), (1, 1)]
+
     for w in range(1, max_weight + 1):
-        for positions in itertools.combinations(range(L), w):
-            if is_logical_op(positions, tableau):
-                logical_ops.append(positions)
+        for qubit_positions in itertools.combinations(range(L), w):
+            for labels in itertools.product(single_qubit_patterns, repeat=w):
+                v = np.zeros(2 * L, dtype=int)
+                for i, (qx, qz) in zip(qubit_positions, labels):
+                    v[i] = qx
+                    v[i + L] = qz
+
+                if is_logical_vec(v, tableau):
+                    logical_ops.append(v.copy())
+
+    return logical_ops
+
+
+def format_symplectic_vector(v: np.ndarray) -> str:
+    """
+    Convert symplectic vector back to Pauli string for display.
+    """
+    L = len(v) // 2
+    x_bits, z_bits = v[:L], v[L:]
     
-    return logical_ops 
+    pauli_chars = []
+    for i in range(L):
+        if x_bits[i] == 0 and z_bits[i] == 0:
+            pauli_chars.append('I')
+        elif x_bits[i] == 1 and z_bits[i] == 0:
+            pauli_chars.append('X')
+        elif x_bits[i] == 0 and z_bits[i] == 1:
+            pauli_chars.append('Z')
+        elif x_bits[i] == 1 and z_bits[i] == 1:
+            pauli_chars.append('Y')
+    
+    return ''.join(pauli_chars) 

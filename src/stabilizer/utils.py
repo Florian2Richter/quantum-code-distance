@@ -27,6 +27,16 @@ def weight_of_op(op: list[str]) -> int:
     return sum(1 for p in op if p != 'I')
 
 
+def symplectic_weight(v: np.ndarray) -> int:
+    """
+    Compute qubit-weight of symplectic vector v (length 2L).
+    Weight = number of qubits with non-identity Pauli operators.
+    """
+    L = len(v) // 2
+    x_bits, z_bits = v[:L], v[L:]
+    return np.sum((x_bits | z_bits).astype(int))
+
+
 def symplectic_product(v1: np.ndarray, v2: np.ndarray) -> int:
     """
     Compute symplectic inner product between two 2L-dimensional vectors.
@@ -85,12 +95,29 @@ def is_in_stabilizer_group(op_vector: np.ndarray, tableau: np.ndarray) -> bool:
     return np.all(augmented[-1] == 0)
 
 
+def is_logical_vec(v: np.ndarray, tableau: np.ndarray) -> bool:
+    """
+    Check if symplectic vector v (shape (2L,)) is a non-trivial logical:
+      1) it commutes with every stabilizer (symplectic product = 0)
+      2) it is not itself in the span of the stabilizer rows
+    """
+    # 1) Commutation check
+    for stab in tableau:
+        if symplectic_product(v, stab) != 0:
+            return False
+
+    # 2) Exclude pure stabilizers
+    return not is_in_stabilizer_group(v, tableau)
+
+
 def is_logical_op(positions: tuple[int, ...], tableau: np.ndarray) -> bool:
     """
     Check if an operator on given positions is a logical operator.
     A logical operator must:
     1. Commute with all stabilizers 
     2. Not be in the stabilizer group itself
+    
+    LEGACY: Consider using is_logical_vec for better performance.
     """
     L = tableau.shape[1] // 2
     

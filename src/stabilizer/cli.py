@@ -2,7 +2,7 @@ import click
 from .generator import parse_seed
 from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
-from .distance import find_distance, find_logical_operators
+from .distance import find_distance, find_logical_operators, format_symplectic_vector
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -78,8 +78,9 @@ def main(seed: str, verbose: bool, show_tableau: bool):
         logical_ops = find_logical_operators(tableau, max_weight=3)
         if logical_ops:
             click.echo(f"Found {len(logical_ops)} logical operators:")
-            for i, ops in enumerate(logical_ops[:5]):  # Show first 5
-                click.echo(f"  Logical op {i+1}: qubits {ops}")
+            for i, vec in enumerate(logical_ops[:5]):  # Show first 5
+                pauli_str = format_symplectic_vector(vec)
+                click.echo(f"  Logical op {i+1}: {pauli_str}")
         else:
             click.echo("  No logical operators found in low-weight search.")
 
