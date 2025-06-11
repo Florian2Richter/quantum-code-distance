@@ -6,9 +6,21 @@ Build binary symplectic stabilizer tableau and compute its rank.
 """
 
 def build_tableau(stab_ops: list[list[str]]) -> np.ndarray:
-    # Each op → 2L-bit vector
+    """
+    Build binary symplectic tableau from stabilizer operators.
+    Each operator → 2L-bit vector in symplectic form [x|z].
+    """
+    if not stab_ops:
+        raise ValueError("No stabilizer operators provided")
+    
     L = len(stab_ops[0])
     M = len(stab_ops)
+    
+    # Validate all operators have same length
+    for i, op in enumerate(stab_ops):
+        if len(op) != L:
+            raise ValueError(f"Operator {i} has length {len(op)}, expected {L}")
+    
     tab = np.zeros((M, 2*L), dtype=int)
     for i, op in enumerate(stab_ops):
         tab[i, :] = pauli_to_symplectic(op)
@@ -16,21 +28,59 @@ def build_tableau(stab_ops: list[list[str]]) -> np.ndarray:
 
 
 def compute_rank(tableau: np.ndarray) -> int:
-    # Over GF(2)
+    """
+    Compute rank of binary matrix over GF(2) using Gaussian elimination.
+    """
+    if tableau.size == 0:
+        return 0
+        
+    # Work over GF(2)
     A = tableau.copy() % 2
     rank = 0
     rows, cols = A.shape
-    c = 0
-    for r in range(rows):
-        while c < cols and not any(A[i, c] for i in range(r, rows)):
-            c += 1
-        if c == cols:
+    col = 0
+    
+    for row in range(rows):
+        # Find pivot in current column
+        while col < cols and not any(A[r, col] for r in range(row, rows)):
+            col += 1
+        if col == cols:
             break
-        pivot = next(i for i in range(r, rows) if A[i, c])
-        A[[r, pivot]] = A[[pivot, r]]
-        for i in range(rows):
-            if i != r and A[i, c]:
-                A[i, :] ^= A[r, :]
+            
+        # Find first row with 1 in current column
+        pivot_row = next(r for r in range(row, rows) if A[r, col])
+        
+        # Swap rows to bring pivot to current row
+        if pivot_row != row:
+            A[[row, pivot_row]] = A[[pivot_row, row]]
+        
+        # Eliminate column in all other rows
+        for r in range(rows):
+            if r != row and A[r, col]:
+                A[r, :] ^= A[row, :]
+        
         rank += 1
-        c += 1
-    return rank 
+        col += 1
+    
+    return rank
+
+
+def analyze_tableau(tableau: np.ndarray) -> dict:
+    """
+    Analyze stabilizer tableau and return comprehensive information.
+    """
+    L = tableau.shape[1] // 2
+    M = tableau.shape[0]
+    rank = compute_rank(tableau)
+    
+    analysis = {
+        'num_qubits': L,
+        'num_stabilizers': M,
+        'rank': rank,
+        'num_logical': L - rank,
+        'tableau_shape': tableau.shape,
+        'is_overcomplete': M > rank,
+        'has_logical_qubits': rank < L
+    }
+    
+    return analysis 
