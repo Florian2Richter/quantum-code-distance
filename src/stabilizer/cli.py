@@ -2,7 +2,7 @@ import click
 from .generator import parse_seed
 from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
-from .distance import find_distance, find_logical_operators, format_symplectic_vector, find_distance_with_early_stop
+from .distance import find_distance, find_logical_operators, format_symplectic_vector
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -20,17 +20,13 @@ from .distance import find_distance, find_logical_operators, format_symplectic_v
     is_flag=True,
     help="Display the binary symplectic tableau."
 )
-@click.option(
-    "--max-distance",
-    type=int,
-    help="Maximum distance to search (early stop optimization)."
-)
+
 @click.option(
     "--no-progress",
     is_flag=True,
     help="Disable progress bars."
 )
-def main(seed: str, verbose: bool, show_tableau: bool, max_distance: int, no_progress: bool):
+def main(seed: str, verbose: bool, show_tableau: bool, no_progress: bool):
     """
     CLI entry point for building a stabilizer code on a 1D ring.
     
@@ -83,23 +79,11 @@ def main(seed: str, verbose: bool, show_tableau: bool, max_distance: int, no_pro
         import os
         os.environ['TQDM_DISABLE'] = '1'
     
-    if max_distance:
-        click.echo(f"  Using early-stop optimization (max distance: {max_distance})")
-        distance = find_distance_with_early_stop(tableau, max_distance)
-        if distance == L:
-            click.echo(f"  No logical operators found up to weight {max_distance}")
-            click.echo(f"  Code distance (d): >{max_distance}")
-        else:
-            click.echo(f"  Code distance (d): {distance}")
-    else:
-        distance = find_distance(tableau)
-        click.echo(f"  Code distance (d): {distance}")
+    distance = find_distance(tableau)
+    click.echo(f"  Code distance (d): {distance}")
     
     # Summary
-    if max_distance and distance == L:
-        click.echo(f"\nQuantum Error Correcting Code: [[{L}, {n_logical}, >{max_distance}]]")
-    else:
-        click.echo(f"\nQuantum Error Correcting Code: [[{L}, {n_logical}, {distance}]]")
+    click.echo(f"\nQuantum Error Correcting Code: [[{L}, {n_logical}, {distance}]]")
     
     if verbose and n_logical > 0:
         click.echo(f"\nFinding logical operators (up to weight 3)...")
