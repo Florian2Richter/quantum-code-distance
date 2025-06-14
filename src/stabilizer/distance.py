@@ -8,9 +8,7 @@ from tqdm import tqdm
 from .utils import (
     symplectic_product,
     is_in_stabilizer_group,
-    symplectic_weight,
     is_logical_vec,
-    is_logical_op  # Keep for backward compatibility
 )
 
 
@@ -18,7 +16,7 @@ def find_distance(tableau: np.ndarray) -> int:
     """
     Find the minimal qubit-weight of a logical operator.
     We now enumerate binary vectors v of length 2L, 
-    grouped by qubit-weight via symplectic_weight().
+    grouped by qubit-weight.
     """
     L = tableau.shape[1] // 2
     

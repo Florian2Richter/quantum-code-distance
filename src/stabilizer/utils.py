@@ -22,21 +22,6 @@ def pauli_to_symplectic(op: list[str]) -> np.ndarray:
     return np.concatenate([x, z])
 
 
-def weight_of_op(op: list[str]) -> int:
-    """Count non-Identity Paulis"""
-    return sum(1 for p in op if p != 'I')
-
-
-def symplectic_weight(v: np.ndarray) -> int:
-    """
-    Compute qubit-weight of symplectic vector v (length 2L).
-    Weight = number of qubits with non-identity Pauli operators.
-    """
-    L = len(v) // 2
-    x_bits, z_bits = v[:L], v[L:]
-    return np.sum((x_bits | z_bits).astype(int))
-
-
 def symplectic_product(v1: np.ndarray, v2: np.ndarray) -> int:
     """
     Compute symplectic inner product between two 2L-dimensional vectors.
@@ -107,32 +92,4 @@ def is_logical_vec(v: np.ndarray, tableau: np.ndarray) -> bool:
             return False
 
     # 2) Exclude pure stabilizers
-    return not is_in_stabilizer_group(v, tableau)
-
-
-def is_logical_op(positions: tuple[int, ...], tableau: np.ndarray) -> bool:
-    """
-    Check if an operator on given positions is a logical operator.
-    A logical operator must:
-    1. Commute with all stabilizers 
-    2. Not be in the stabilizer group itself
-    
-    LEGACY: Consider using is_logical_vec for better performance.
-    """
-    L = tableau.shape[1] // 2
-    
-    # Try both X and Z operators on these positions
-    for pauli_type in ['X', 'Z']:
-        op_vector = positions_to_symplectic(positions, L, pauli_type)
-        
-        # Check commutation with all stabilizers
-        commutes_with_all = True
-        for stab_row in tableau:
-            if symplectic_product(op_vector, stab_row) != 0:
-                commutes_with_all = False
-                break
-        
-        if commutes_with_all and not is_in_stabilizer_group(op_vector, tableau):
-            return True
-    
-    return False 
+    return not is_in_stabilizer_group(v, tableau) 

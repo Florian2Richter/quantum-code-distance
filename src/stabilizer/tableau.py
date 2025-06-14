@@ -62,25 +62,4 @@ def compute_rank(tableau: np.ndarray) -> int:
         rank += 1
         col += 1
     
-    return rank
-
-
-def analyze_tableau(tableau: np.ndarray) -> dict:
-    """
-    Analyze stabilizer tableau and return comprehensive information.
-    """
-    L = tableau.shape[1] // 2
-    M = tableau.shape[0]
-    rank = compute_rank(tableau)
-    
-    analysis = {
-        'num_qubits': L,
-        'num_stabilizers': M,
-        'rank': rank,
-        'num_logical': L - rank,
-        'tableau_shape': tableau.shape,
-        'is_overcomplete': M > rank,
-        'has_logical_qubits': rank < L
-    }
-    
-    return analysis 
+    return rank 
