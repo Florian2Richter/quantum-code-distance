@@ -1,120 +1,129 @@
-"""
-Brute-force search (or heuristic) for minimal logical operator weight.
-"""
-
 import itertools
 import numpy as np
-from tqdm import tqdm
-from .utils import (
-    symplectic_product,
-    is_in_stabilizer_group,
-    is_logical_vec,
-)
 
+def _rref_mod2(M: np.ndarray):
+    """
+    Reduced row-echelon form over GF(2).
+    Returns (R, pivots) where pivots is a list of pivot columns.
+    """
+    A = M.copy() % 2
+    rows, cols = A.shape
+    pivots = []
+    r = 0
+    for c in range(cols):
+        if r >= rows:
+            break
+        # find a pivot in column c at or below row r
+        for i in range(r, rows):
+            if A[i, c] == 1:
+                A[[r, i]] = A[[i, r]]
+                break
+        else:
+            continue
+        # eliminate all other 1’s in column c
+        for j in range(rows):
+            if j != r and A[j, c] == 1:
+                A[j] ^= A[r]
+        pivots.append(c)
+        r += 1
+    return A, pivots
+
+def _rank_mod2(M: np.ndarray) -> int:
+    """Rank over GF(2)."""
+    _, pivots = _rref_mod2(M)
+    return len(pivots)
+
+def _nullspace_mod2(M: np.ndarray) -> list[np.ndarray]:
+    """
+    Basis for the null-space of M over GF(2).
+    Returns a list of column vectors v with M·v = 0 (mod 2).
+    """
+    R, pivots = _rref_mod2(M)
+    rows, cols = R.shape
+    free_vars = [c for c in range(cols) if c not in pivots]
+    basis = []
+    for fv in free_vars:
+        v = np.zeros(cols, dtype=int)
+        v[fv] = 1
+        # back-substitute for pivot rows
+        for i, pc in enumerate(pivots):
+            if R[i, fv] == 1:
+                v[pc] = 1
+        basis.append(v)
+    return basis
+
+def find_logical_operators(tableau: np.ndarray) -> list[np.ndarray]:
+    """
+    Compute a basis (2k vectors) for the logical operators modulo the stabilizer.
+    Same signature as your old function, so you can swap it in directly.
+    """
+    n, twoL = tableau.shape
+    L = twoL // 2
+
+    # build symplectic form J = [[0, I],[I, 0]]
+    J = np.block([
+        [np.zeros((L, L), dtype=int), np.eye(L, dtype=int)],
+        [np.eye(L, dtype=int),       np.zeros((L, L), dtype=int)]
+    ]) % 2
+
+    # centralizer = null-space of (S·J)
+    C = (tableau.dot(J)) % 2
+    central_basis = _nullspace_mod2(C)
+
+    # pick those that extend the stabilizer span to get exactly 2k vectors
+    stab_rank = _rank_mod2(tableau)
+    k = L - stab_rank
+    logical_basis = []
+    aug = tableau.copy()
+    for v in central_basis:
+        if len(logical_basis) >= 2 * k:
+            break
+        new_aug = np.vstack([aug, v.reshape(1, -1)]) % 2
+        if _rank_mod2(new_aug) > _rank_mod2(aug):
+            logical_basis.append(v.copy())
+            aug = new_aug
+
+    return logical_basis
 
 def find_distance(tableau: np.ndarray) -> int:
     """
-    Find the minimal qubit-weight of a logical operator.
-    We now enumerate binary vectors v of length 2L, 
-    grouped by qubit-weight.
+    Compute the code distance by brute-forcing all nonzero combos of the 2k logical generators.
     """
     L = tableau.shape[1] // 2
-    
-    # Early exit: if rank >= L, no logicals at all
-    if tableau.shape[0] >= L:
-        return 0
+    stab_rank = _rank_mod2(tableau)
+    if L - stab_rank == 0:
+        return 0   # no logical qubits ⇒ distance 0
 
-    # Precompute all non-zero single-qubit symplectic patterns
-    # (X=(1,0), Z=(0,1), Y=(1,1)) for convenience
-    single_qubit_patterns = [(1, 0), (0, 1), (1, 1)]
+    log_ops = find_logical_operators(tableau)
+    best = L
 
-    # For each target weight w = 1..L
-    for w in range(1, L + 1):
-        print(f"  Searching symplectic vectors of qubit-weight {w}...")
-        
-        # Calculate total number of combinations for progress bar
-        num_positions = len(list(itertools.combinations(range(L), w)))
-        num_patterns = len(single_qubit_patterns) ** w
-        total_combinations = num_positions * num_patterns
-        
-        # Use progress bar for this weight
-        with tqdm(total=total_combinations, desc=f"Weight {w}", leave=False) as pbar:
-            # 1) Choose which w qubits are non-identity
-            for qubit_positions in itertools.combinations(range(L), w):
+    def _weight(v: np.ndarray) -> int:
+        x, z = v[:L], v[L:]
+        return int(np.count_nonzero(x | z))
 
-                # 2) For each assignment of X/Z/Y on those positions
-                for labels in itertools.product(single_qubit_patterns, repeat=w):
-                    # build the 2L-vector
-                    v = np.zeros(2 * L, dtype=int)
-                    for i, (qx, qz) in zip(qubit_positions, labels):
-                        v[i] = qx      # X-bit
-                        v[i + L] = qz  # Z-bit
-
-                    # 3) test if logical
-                    if is_logical_vec(v, tableau):
-                        pbar.close()  # Close progress bar early
-                        return w
-                    
-                    pbar.update(1)
-
-    return L
-
-
-def find_logical_operators(tableau: np.ndarray, max_weight: int = None) -> list[np.ndarray]:
-    """
-    Find all logical operators up to a given weight.
-    Returns list of symplectic vectors instead of position tuples.
-    """
-    L = tableau.shape[1] // 2
-    if max_weight is None:
-        max_weight = min(L, 5)  # Default limit to avoid exponential explosion
-
-    logical_ops = []
-    single_qubit_patterns = [(1, 0), (0, 1), (1, 1)]
-    
-    # Calculate total combinations across all weights for progress bar
-    total_combinations = 0
-    for w in range(1, max_weight + 1):
-        num_positions = len(list(itertools.combinations(range(L), w)))
-        num_patterns = len(single_qubit_patterns) ** w
-        total_combinations += num_positions * num_patterns
-
-    with tqdm(total=total_combinations, desc="Finding logical operators") as pbar:
-        for w in range(1, max_weight + 1):
-            for qubit_positions in itertools.combinations(range(L), w):
-                for labels in itertools.product(single_qubit_patterns, repeat=w):
-                    v = np.zeros(2 * L, dtype=int)
-                    for i, (qx, qz) in zip(qubit_positions, labels):
-                        v[i] = qx
-                        v[i + L] = qz
-
-                    if is_logical_vec(v, tableau):
-                        logical_ops.append(v.copy())
-                    
-                    pbar.update(1)
-
-    return logical_ops
-
-
-
-
+    # enumerate all nonempty subsets
+    n = len(log_ops)
+    for r in range(1, n + 1):
+        for combo in itertools.combinations(range(n), r):
+            vec = sum(log_ops[i] for i in combo) % 2
+            w = _weight(vec)
+            if w < best:
+                best = w
+                if best == 1:
+                    return 1
+    return best
 
 def format_symplectic_vector(v: np.ndarray) -> str:
     """
-    Convert symplectic vector back to Pauli string for display.
+    Convert a 2L-length symplectic vector v into its Pauli-string representation.
     """
     L = len(v) // 2
     x_bits, z_bits = v[:L], v[L:]
-    
     pauli_chars = []
     for i in range(L):
-        if x_bits[i] == 0 and z_bits[i] == 0:
-            pauli_chars.append('I')
-        elif x_bits[i] == 1 and z_bits[i] == 0:
-            pauli_chars.append('X')
-        elif x_bits[i] == 0 and z_bits[i] == 1:
-            pauli_chars.append('Z')
-        elif x_bits[i] == 1 and z_bits[i] == 1:
-            pauli_chars.append('Y')
-    
-    return ''.join(pauli_chars) 
+        xi, zi = int(x_bits[i]), int(z_bits[i])
+        if   xi == 0 and zi == 0: pauli_chars.append('I')
+        elif xi == 1 and zi == 0: pauli_chars.append('X')
+        elif xi == 0 and zi == 1: pauli_chars.append('Z')
+        else:                     pauli_chars.append('Y')
+    return ''.join(pauli_chars)

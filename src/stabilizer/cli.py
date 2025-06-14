@@ -86,11 +86,11 @@ def main(seed: str, verbose: bool, show_tableau: bool, no_progress: bool):
     click.echo(f"\nQuantum Error Correcting Code: [[{L}, {n_logical}, {distance}]]")
     
     if verbose and n_logical > 0:
-        click.echo(f"\nFinding logical operators (up to weight 3)...")
-        logical_ops = find_logical_operators(tableau, max_weight=3)
+        click.echo(f"\nFinding logical operators")
+        logical_ops = find_logical_operators(tableau)
         if logical_ops:
             click.echo(f"Found {len(logical_ops)} logical operators:")
-            for i, vec in enumerate(logical_ops[:5]):  # Show first 5
+            for i, vec in enumerate(logical_ops):  # Show first 5
                 pauli_str = format_symplectic_vector(vec)
                 click.echo(f"  Logical op {i+1}: {pauli_str}")
         else:
