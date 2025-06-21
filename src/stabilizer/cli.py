@@ -1,5 +1,6 @@
 import click
 import logging
+import numpy as np
 import time
 from contextlib import contextmanager
 from typing import Tuple, List
@@ -72,7 +73,7 @@ class Display:
 
 
 def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int, 
-                          display: Display, show_tableau: bool, no_progress: bool) -> Tuple[int, int, str]:
+                          display: Display, verbose: bool) -> Tuple[int, int, str]:
     """
     Complete analysis of a stabilizer code for a given Pauli string.
     
@@ -81,8 +82,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         L: Number of physical qubits
         step: Current time step (for display purposes)
         display: Display handler for output
-        show_tableau: Whether to display the tableau
-        no_progress: Whether to disable progress bars
+        verbose: Whether to show debug info (includes tableau and disables progress)
         
     Returns:
         Tuple of (n_logical, rank, distance) where distance is str or int
@@ -108,9 +108,11 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         rank = compute_rank(tableau)
         n_logical = L - rank
     
-    if show_tableau:
+    if verbose:
         display.section("Binary symplectic tableau (%dx%d):" % (tableau.shape[0], tableau.shape[1]))
-        click.echo(tableau)
+        # Temporarily set numpy to show full array without truncation
+        with np.printoptions(threshold=np.inf, linewidth=np.inf):
+            display.debug("Tableau:\n%s", tableau)
     
     # Display code parameters
     display.section("Code parameters:")
@@ -123,7 +125,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         display.info("  Code distance (d): %s", distance)
     else:
         # Compute distance
-        if no_progress:
+        if verbose:
             import os
             os.environ['TQDM_DISABLE'] = '1'
         
@@ -155,17 +157,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
 @click.option(
     "--verbose", "-v",
     is_flag=True,
-    help="Show detailed information about the computation."
-)
-@click.option(
-    "--show-tableau",
-    is_flag=True,
-    help="Display the binary symplectic tableau."
-)
-@click.option(
-    "--no-progress",
-    is_flag=True,
-    help="Disable progress bars."
+    help="Show detailed debug information, including timing, tableau display, and disable progress bars."
 )
 @click.option(
     "--time-steps",
@@ -173,7 +165,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
     default=0,
     help="Number of QCA time evolution steps to perform (default: 0, no evolution)."
 )
-def main(seed: str, verbose: bool, show_tableau: bool, no_progress: bool, time_steps: int):
+def main(seed: str, verbose: bool, time_steps: int):
     """
     CLI entry point for building a stabilizer code on a 1D ring.
     
@@ -207,9 +199,9 @@ def main(seed: str, verbose: bool, show_tableau: bool, no_progress: bool, time_s
             with display.timer("QCA step %d evolution" % step):
                 current_pauli = qca_evolution_step(current_pauli)
         
-        # Run full analysis for current state
+        # Run full analysis for current state  
         n_logical, rank, distance = analyze_stabilizer_code(
-            current_pauli, L, step, display, show_tableau, no_progress
+            current_pauli, L, step, display, verbose
         )
         
         # Early exit if no logical qubits and no time evolution requested
