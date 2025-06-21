@@ -1,4 +1,5 @@
 import click
+import logging
 import time
 from contextlib import contextmanager
 from typing import Tuple, List
@@ -6,89 +7,144 @@ from .generator import parse_seed
 from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
 from .distance import find_distance, find_logical_operators, format_symplectic_vector
-from .qca import evolve_pauli_string, qca_evolution_step
+from .qca import qca_evolution_step
 
-@contextmanager
-def timer(description: str, verbose: bool = False):
-    """
-    Context manager for timing operations with optional verbose output.
+
+def configure_logging(verbose: bool):
+    """Configure logging based on verbosity level."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-5s %(message)s",
+        datefmt="%H:%M:%S"
+    )
+
+
+class Display:
+    """Handles all display logic using Python's standard logging module."""
     
-    Args:
-        description: Description of the operation being timed
-        verbose: Whether to display timing information
-    """
-    if verbose:
+    def __init__(self):
+        self.logger = logging.getLogger("qca")
+    
+    def info(self, message: str, *args):
+        """Always display important information."""
+        self.logger.info(message, *args)
+    
+    def debug(self, message: str, *args):
+        """Display debug information only if debug level is enabled."""
+        self.logger.debug(message, *args)
+    
+    def section(self, title: str):
+        """Display a section header."""
+        self.logger.info("\n%s", title)
+    
+    def separator(self, text: str, char: str = "=", width: int = 60):
+        """Display a separator line with text."""
+        line = char * width
+        self.logger.info("\n%s\n%s\n%s", line, text, line)
+    
+    @contextmanager
+    def timer(self, description: str):
+        """Context manager for timing operations with optional debug output."""
         start_time = time.time()
         yield
         elapsed = time.time() - start_time
-        click.echo(f"  {description} time: {elapsed:.6f} seconds")
-    else:
-        yield
+        self.logger.debug("  %s time: %.6f seconds", description, elapsed)
+    
+    def show_operators(self, stab_ops: List[List[str]], L: int):
+        """Display stabilizer operators if in debug mode."""
+        self.logger.debug("Generated %d stabilizer operators:", len(stab_ops))
+        for i, op in enumerate(stab_ops):
+            self.logger.debug("  S%d: %s", i, ''.join(op))
+    
+    def show_logical_operators(self, logical_ops: List, display_all: bool = False):
+        """Display logical operators if found."""
+        if logical_ops:
+            self.logger.info("Found %d logical operators:", len(logical_ops))
+            ops_to_show = logical_ops if display_all else logical_ops[:10]
+            for i, vec in enumerate(ops_to_show):  
+                pauli_str = format_symplectic_vector(vec)
+                self.logger.info("  Logical op %d: %s", i+1, pauli_str)
+            if not display_all and len(logical_ops) > 10:
+                self.logger.info("  ... and %d more operators", len(logical_ops) - 10)
+        else:
+            self.logger.info("  No logical operators found.")
 
-def compute_code_distance(pauli_string: List[str], L: int, verbose: bool) -> Tuple[int, int, str]:
+
+def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int, 
+                          display: Display, show_tableau: bool, no_progress: bool) -> Tuple[int, int, str]:
     """
-    Compute stabilizer code parameters for a given Pauli string.
+    Complete analysis of a stabilizer code for a given Pauli string.
     
     Args:
         pauli_string: List of Pauli operators
         L: Number of physical qubits
-        verbose: Whether to show timing information
+        step: Current time step (for display purposes)
+        display: Display handler for output
+        show_tableau: Whether to display the tableau
+        no_progress: Whether to disable progress bars
         
     Returns:
         Tuple of (n_logical, rank, distance) where distance is str or int
     """
-    with timer("Building lattice", verbose):
+    step_label = "Time step %d" % step if step > 0 else "Initial state"
+    if step > 0:
+        display.separator("%s: %s" % (step_label, ''.join(pauli_string)))
+    
+    # Build stabilizer operators
+    display.debug("Generating stabilizer operators on L=%d qubits...", L)
+    
+    with display.timer("Building lattice"):
         stab_ops = build_lattice(pauli_string)
     
-    with timer("Building tableau", verbose):
+    display.show_operators(stab_ops, L)
+    
+    # Build tableau
+    with display.timer("Building tableau"):
         tableau = build_tableau(stab_ops)
     
-    with timer("Computing rank", verbose):
+    # Compute rank
+    with display.timer("Computing rank"):
         rank = compute_rank(tableau)
         n_logical = L - rank
     
+    if show_tableau:
+        display.section("Binary symplectic tableau (%dx%d):" % (tableau.shape[0], tableau.shape[1]))
+        click.echo(tableau)
+    
+    # Display code parameters
+    display.section("Code parameters:")
+    display.info("  Physical qubits (n): %d", L)
+    display.info("  Stabilizer rank: %d", rank)
+    display.info("  Logical qubits (k): %d", n_logical)
+    
     if n_logical == 0:
         distance = "N/A (no logical qubits)"
+        display.info("  Code distance (d): %s", distance)
     else:
-        with timer("Computing distance", verbose):
+        # Compute distance
+        if no_progress:
+            import os
+            os.environ['TQDM_DISABLE'] = '1'
+        
+        display.section("Searching for code distance...")
+        with display.timer("Computing distance"):
             distance = find_distance(tableau)
+        
+        display.info("  Code distance (d): %s", distance)
+        display.section("Quantum Error Correcting Code: [[%d, %d, %s]]" % (L, n_logical, distance))
+        
+        # Find logical operators if in debug mode
+        if display.logger.isEnabledFor(logging.DEBUG) and n_logical > 0:
+            display.section("Finding logical operators...")
+            
+            with display.timer("Finding logical operators"):
+                logical_ops = find_logical_operators(tableau)
+            
+            display.show_logical_operators(logical_ops)
     
     return n_logical, rank, distance
 
-def run_qca_evolution(initial_pauli: List[str], L: int, time_steps: int, verbose: bool):
-    """
-    Run QCA time evolution for specified number of steps.
-    
-    Args:
-        initial_pauli: Initial Pauli string
-        L: Number of physical qubits  
-        time_steps: Number of evolution steps to perform
-        verbose: Whether to show detailed timing
-    """
-    click.echo(f"\n" + "="*60)
-    click.echo(f"QCA TIME EVOLUTION ({time_steps} steps)")
-    click.echo(f"="*60)
-    
-    current_pauli = initial_pauli.copy()
-    
-    # Unified loop: step 0 = initial, steps 1+ = evolved
-    for step in range(time_steps + 1):
-        if step > 0:
-            # Evolve from previous step
-            with timer(f"QCA step {step} evolution", verbose):
-                current_pauli = qca_evolution_step(current_pauli)
-        
-        # Compute distance for current state (same logic for all steps)
-        if verbose and step > 0:
-            click.echo(f"\nTime step {step}:")
-        
-        n_logical, rank, distance = compute_code_distance(current_pauli, L, verbose)
-        
-        # Display result in unified format
-        click.echo(f"time step {step}: {''.join(current_pauli)} → distance = {distance}")
-        
-        if verbose and n_logical > 0:
-            click.echo(f"  [[{L}, {n_logical}, {distance}]]")
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -124,90 +180,46 @@ def main(seed: str, verbose: bool, show_tableau: bool, no_progress: bool, time_s
     Takes a seed string of Pauli operators and computes the quantum error 
     correcting code parameters on a 1D lattice with periodic boundary conditions.
     """
-    click.echo(f"Building stabilizer code from seed: {seed}")
+    # Configure logging based on verbosity
+    configure_logging(verbose)
+    display = Display()
     
-    if verbose:
-        total_start_time = time.time()
+    display.info("Building stabilizer code from seed: %s", seed)
+    
+    total_start_time = time.time() if verbose else None
     
     # 1. Parse and validate the seed string
     try:
-        with timer("Parsing seed", verbose):
+        with display.timer("Parsing seed"):
             pauli = parse_seed(seed)
-        if verbose:
-            click.echo(f"Parsed seed: {pauli}")
+        display.debug("Parsed seed: %s", pauli)
     except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
+        display.info("Error: %s", e)
         return
     
     L = len(pauli)
+    current_pauli = pauli.copy()
     
-    # 2. Build initial stabilizer code (only for display and logical operators)
-    if verbose:
-        click.echo(f"\nGenerating stabilizer operators on L={L} qubits...")
-    
-    with timer("Building initial lattice", verbose):
-        stab_ops = build_lattice(pauli)
-    
-    if verbose:
-        click.echo(f"Generated {len(stab_ops)} stabilizer operators:")
-        for i, op in enumerate(stab_ops):
-            click.echo(f"  S{i}: {''.join(op)}")
-    
-    with timer("Building initial tableau", verbose):
-        tableau = build_tableau(stab_ops)
-    
-    with timer("Computing initial rank", verbose):
-        rank = compute_rank(tableau)
-        n_logical = L - rank
-    
-    if show_tableau:
-        click.echo(f"\nBinary symplectic tableau ({tableau.shape[0]}×{tableau.shape[1]}):")
-        click.echo(tableau)
-    
-    click.echo(f"\nCode parameters:")
-    click.echo(f"  Physical qubits (n): {L}")
-    click.echo(f"  Stabilizer rank: {rank}")
-    click.echo(f"  Logical qubits (k): {n_logical}")
-    
-    if n_logical == 0:
-        click.echo(f"  Code distance (d): N/A (no logical qubits)")
-        if time_steps == 0:
-            return
-    else:
-        # Compute distance for initial state
-        if no_progress:
-            import os
-            os.environ['TQDM_DISABLE'] = '1'
+    # Time evolution loop: step 0 = initial, steps 1+ = evolved
+    for step in range(time_steps + 1):
+        if step > 0:
+            # Evolve from previous step
+            with display.timer("QCA step %d evolution" % step):
+                current_pauli = qca_evolution_step(current_pauli)
         
-        click.echo(f"\nSearching for code distance...")
-        with timer("Computing initial distance", verbose):
-            distance = find_distance(tableau)
+        # Run full analysis for current state
+        n_logical, rank, distance = analyze_stabilizer_code(
+            current_pauli, L, step, display, show_tableau, no_progress
+        )
         
-        click.echo(f"  Code distance (d): {distance}")
-        click.echo(f"\nQuantum Error Correcting Code: [[{L}, {n_logical}, {distance}]]")
-        
-        # Find logical operators if verbose
-        if verbose and n_logical > 0:
-            click.echo(f"\nFinding logical operators...")
-            
-            with timer("Finding logical operators", verbose):
-                logical_ops = find_logical_operators(tableau)
-            
-            if logical_ops:
-                click.echo(f"Found {len(logical_ops)} logical operators:")
-                for i, vec in enumerate(logical_ops):  
-                    pauli_str = format_symplectic_vector(vec)
-                    click.echo(f"  Logical op {i+1}: {pauli_str}")
-            else:
-                click.echo("  No logical operators found.")
-    
-    # QCA Time Evolution (if requested)
-    if time_steps > 0:
-        run_qca_evolution(pauli, L, time_steps, verbose)
+        # Early exit if no logical qubits and no time evolution requested
+        if n_logical == 0 and time_steps == 0:
+            break
 
-    if verbose:
+    if verbose and total_start_time:
         total_time = time.time() - total_start_time
-        click.echo(f"\nTotal execution time: {total_time:.6f} seconds")
+        display.section("Total execution time: %.6f seconds" % total_time)
+
 
 if __name__ == "__main__":
     main() 

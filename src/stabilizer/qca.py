@@ -93,47 +93,6 @@ def apply_qca_matrix(f: np.ndarray, g: np.ndarray) -> Tuple[np.ndarray, np.ndarr
     return f_new, g_new
 
 
-def evolve_pauli_string(pauli_string: List[str], num_steps: int = 1, debug: bool = False) -> List[List[str]]:
-    """
-    Evolve a Pauli string through multiple QCA time steps.
-    
-    Args:
-        pauli_string: Initial Pauli string
-        num_steps: Number of QCA evolution steps
-        debug: Whether to print debug information
-        
-    Returns:
-        List of evolved Pauli strings, one for each time step
-    """
-    if debug:
-        print(f"    QCA DEBUG: Starting evolution for {num_steps} steps")
-        print(f"    QCA DEBUG: Initial string: {''.join(pauli_string)}")
-    
-    # Convert to symplectic form
-    f, g = pauli_to_symplectic_vectors(pauli_string)
-    
-    if debug:
-        print(f"    QCA DEBUG: Initial f = {f}")
-        print(f"    QCA DEBUG: Initial g = {g}")
-    
-    evolved_strings = []
-    
-    for step in range(num_steps):
-        # Apply one QCA evolution step
-        f, g = apply_qca_matrix(f, g)
-        
-        # Convert back to Pauli string
-        evolved_pauli = symplectic_vectors_to_pauli(f, g)
-        evolved_strings.append(evolved_pauli)
-        
-        if debug:
-            print(f"    QCA DEBUG: Step {step + 1}:")
-            print(f"    QCA DEBUG:   f = {f}")
-            print(f"    QCA DEBUG:   g = {g}")
-            print(f"    QCA DEBUG:   Pauli = {''.join(evolved_pauli)}")
-    
-    return evolved_strings
-
 
 def qca_evolution_step(pauli_string: List[str]) -> List[str]:
     """
