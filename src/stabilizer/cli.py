@@ -9,6 +9,7 @@ from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
 from .distance import find_distance, find_logical_operators, format_symplectic_vector
 from .qca import qca_evolution_step
+from .utils import seed_is_valid
 
 
 def configure_logging(verbose: bool):
@@ -185,6 +186,15 @@ def main(seed: str, verbose: bool, time_steps: int):
         with display.timer("Parsing seed"):
             pauli = parse_seed(seed)
         display.debug("Parsed seed: %s", pauli)
+        
+        # Check if seed generates commuting stabilizers
+        with display.timer("Validating seed commutativity"):
+            is_valid = seed_is_valid(seed)
+        display.debug("Seed commutativity check: %s", "PASSED" if is_valid else "FAILED")
+        if not is_valid:
+            display.info("Error: Cyclic translations of this seed do not all commute")
+            return
+            
     except ValueError as e:
         display.info("Error: %s", e)
         return
