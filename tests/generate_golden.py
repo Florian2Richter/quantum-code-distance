@@ -6,18 +6,19 @@ from stabilizer.tableau import build_tableau, compute_rank
 from stabilizer.distance import find_distance
 from stabilizer.utils import compute_entanglement
 
+# Kombinierte Seeds aus beiden Branches
 seeds = [
-    'XZIY',
-    'ZZII',
-    'XZZX',
+    "XZIY",
+    "ZZII",
+    "XZZX",
     (
-        'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIX'
-        'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII'
+        "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIX"
+        "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII"
     )
 ]
-max_steps = 2
+MAX_STEPS = 2
 
-def compute(seed):
+def compute(seed: str, max_steps: int = MAX_STEPS):
     pauli = parse_seed(seed)
     L = len(pauli)
     data = []
@@ -38,5 +39,13 @@ def compute(seed):
         current = qca_evolution_step(current)
     return data
 
-out = {s: compute(s) for s in seeds}
-print(json.dumps(out, indent=2))
+def compute_all(seeds: list[str], max_steps: int = MAX_STEPS):
+    return {s: compute(s, max_steps) for s in seeds}
+
+def main() -> None:
+    out = compute_all(seeds, MAX_STEPS)
+    with open("tests/data/golden.json", "w") as f:
+        json.dump(out, f, indent=2)
+
+if __name__ == "__main__":
+    main()
