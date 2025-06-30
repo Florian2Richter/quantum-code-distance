@@ -6,7 +6,15 @@ from stabilizer.tableau import build_tableau, compute_rank
 from stabilizer.distance import find_distance
 from stabilizer.utils import compute_entanglement
 
-seeds = ['XZIY', 'ZZII', 'XZZX']
+seeds = [
+    'XZIY',
+    'ZZII',
+    'XZZX',
+    (
+        'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIX'
+        'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII'
+    )
+]
 max_steps = 2
 
 def compute(seed):
