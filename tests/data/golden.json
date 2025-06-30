@@ -1,0 +1,51 @@
+{
+  "XZIY": [
+    {
+      "seed": "XZIY",
+      "step": 0,
+      "k": 1,
+      "distance": 2,
+      "entanglement": 2
+    },
+    {
+      "seed": "XZIY",
+      "step": 1,
+      "k": 1,
+      "distance": 2,
+      "entanglement": 2
+    }
+  ],
+  "ZZII": [
+    {
+      "seed": "ZZII",
+      "step": 0,
+      "k": 1,
+      "distance": 1,
+      "entanglement": 1
+    },
+    {
+      "seed": "ZZII",
+      "step": 1,
+      "k": 1,
+      "distance": 1,
+      "entanglement": 1
+    }
+  ],
+  "XZZX": [
+    {
+      "seed": "XZZX",
+      "step": 0,
+      "k": 1,
+      "distance": 2,
+      "entanglement": 2
+    },
+    {
+      "seed": "XZZX",
+      "step": 1,
+      "k": 1,
+      "distance": 1,
+      "entanglement": 1
+    }
+  ]
+}
+
