@@ -7,9 +7,9 @@ from typing import Tuple, List
 from .generator import parse_seed
 from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
-from .distance import find_distance, find_logical_operators, format_symplectic_vector
+from .distance import find_distance, format_symplectic_vector
 from .qca import qca_evolution_step
-from .utils import seed_is_valid
+from .utils import seed_is_valid, compute_entanglement
 
 
 def configure_logging(verbose: bool):
@@ -123,6 +123,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
     
     if n_logical == 0:
         distance = "N/A (no logical qubits)"
+        logical_ops = []
         display.info("  Code distance (d): %s", distance)
     else:
         # Compute distance
@@ -132,19 +133,20 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         
         display.section("Searching for code distance...")
         with display.timer("Computing distance"):
-            distance = find_distance(tableau)
+            distance, logical_ops = find_distance(tableau, return_logical_ops=True)
         
         display.info("  Code distance (d): %s", distance)
         display.section("Quantum Error Correcting Code: [[%d, %d, %s]]" % (L, n_logical, distance))
         
         # Find logical operators if in debug mode
         if display.logger.isEnabledFor(logging.DEBUG) and n_logical > 0:
-            display.section("Finding logical operators...")
-            
-            with display.timer("Finding logical operators"):
-                logical_ops = find_logical_operators(tableau)
-            
+            display.section("Logical operators used for distance:")
             display.show_logical_operators(logical_ops)
+
+    # Compute entanglement across half cut
+    with display.timer("Computing entanglement"):
+        ent = compute_entanglement(tableau, logical_ops if n_logical > 0 else None)
+    display.info("  Bipartite entanglement: %d", ent)
     
     return n_logical, rank, distance
 
