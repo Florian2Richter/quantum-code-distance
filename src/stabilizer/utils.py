@@ -78,29 +78,31 @@ def positions_to_symplectic(positions: tuple[int, ...], L: int, pauli_type: str 
 def compute_entanglement(tableau: np.ndarray, logical_ops: list[np.ndarray] | None = None) -> int:
     r"""Compute bipartite entanglement across a half-ring cut.
 
-    The tableau should describe the stabilizer generators of a pure state.
-    If logical operators are provided, they are appended as additional
-    stabilizers (assumed to commute) fixing the logical qubits to the
-    ``|0\ldots0\rangle`` state.
+    The input tableau specifies stabilizer generators for a pure state.
+    Optional ``logical_ops`` may be supplied, but only those whose X part
+    is all zeros (Z logicals) are appended as additional stabilizers fixing
+    the logical qubits.  The entanglement is then half the number of rows
+    that have support on both sides of the cut when the chain is split in
+    half.
     """
-    from .tableau import compute_rank
 
     L = tableau.shape[1] // 2
 
     if logical_ops:
-        to_add = [op.reshape(1, -1) for op in logical_ops]
-        tableau = np.vstack([tableau] + to_add)
+        z_logicals = [op for op in logical_ops if not np.any(op[:L])]
+        if z_logicals:
+            to_add = [op.reshape(1, -1) for op in z_logicals]
+            tableau = np.vstack([tableau] + to_add)
 
     cut = L // 2
-    a_cols = list(range(cut)) + list(range(L, L + cut))
-    b_cols = list(range(cut, L)) + list(range(L + cut, 2 * L))
 
-    rank_a = compute_rank(tableau[:, a_cols])
-    rank_b = compute_rank(tableau[:, b_cols])
+    count = 0
+    for row in tableau:
+        x = row[:L]
+        z = row[L:]
+        left = np.any(x[:cut] | z[:cut])
+        right = np.any(x[cut:] | z[cut:])
+        if left and right:
+            count += 1
 
-    return (L - rank_a - rank_b) // 2
-
-
-
-
-
+    return count // 2
