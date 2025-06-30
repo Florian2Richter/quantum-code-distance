@@ -85,13 +85,15 @@ def find_logical_operators(tableau: np.ndarray) -> list[np.ndarray]:
 
     return logical_basis
 
-def find_distance(tableau: np.ndarray) -> int:
+def find_distance(tableau: np.ndarray, *, return_logical_ops: bool = False):
     """
     Compute the code distance by brute-forcing all nonzero combos of the 2k logical generators.
     """
     L = tableau.shape[1] // 2
     stab_rank = _rank_mod2(tableau)
     if L - stab_rank == 0:
+        if return_logical_ops:
+            return 0, []
         return 0   # no logical qubits ⇒ distance 0
 
     log_ops = find_logical_operators(tableau)
@@ -110,7 +112,12 @@ def find_distance(tableau: np.ndarray) -> int:
             if w < best:
                 best = w
                 if best == 1:
-                    return 1
+                    if not return_logical_ops:
+                        return 1
+                    else:
+                        return (1, log_ops)
+    if return_logical_ops:
+        return best, log_ops
     return best
 
 def format_symplectic_vector(v: np.ndarray) -> str:
