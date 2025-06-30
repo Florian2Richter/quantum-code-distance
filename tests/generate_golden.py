@@ -6,7 +6,16 @@ from stabilizer.tableau import build_tableau, compute_rank
 from stabilizer.distance import find_distance
 from stabilizer.utils import compute_entanglement
 
-seeds = ["XZIY", "ZZII", "XZZX"]
+# Kombinierte Seeds aus beiden Branches
+seeds = [
+    "XZIY",
+    "ZZII",
+    "XZZX",
+    (
+        "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIX"
+        "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII"
+    )
+]
 MAX_STEPS = 2
 
 def compute(seed: str, max_steps: int = MAX_STEPS):
@@ -33,12 +42,10 @@ def compute(seed: str, max_steps: int = MAX_STEPS):
 def compute_all(seeds: list[str], max_steps: int = MAX_STEPS):
     return {s: compute(s, max_steps) for s in seeds}
 
-
 def main() -> None:
     out = compute_all(seeds, MAX_STEPS)
     with open("tests/data/golden.json", "w") as f:
         json.dump(out, f, indent=2)
-
 
 if __name__ == "__main__":
     main()
