@@ -1,0 +1,4 @@
+# file: /home/florian/repos/quantum-code-distance/src/stabilizer/generator.py
+# hypothesis_version: 6.135.20
+
+['I', 'X', 'Y', 'Z']

@@ -7,5 +7,11 @@ dependencies = [
     "tqdm",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=6.0",
+    "hypothesis>=6.0",
+]
+
 [project.scripts]
 stabcode = "stabilizer.cli:main" 
