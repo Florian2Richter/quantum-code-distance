@@ -85,11 +85,12 @@ class TestLogicalOperators:
         """Test logical operator extraction using polynomial implementation."""
         if fixture.k == 0:
             pytest.skip("No logical operators for k=0")
-            
-        # This will be implemented later
-        tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+
+        # Build lattice from seed, then tableau from lattice
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        tableau = polydist.tableau.build_tableau_poly(stab_ops)
         logical_ops = polydist.distance.find_logical_operators(tableau)
-        
+
         # Should return 2k logical operators
         assert len(logical_ops) == 2 * fixture.k, \
             f"Poly: Expected {2 * fixture.k} logical ops, got {len(logical_ops)}"
@@ -127,8 +128,9 @@ class TestCodeDistance:
     @pytest.mark.parametrize("fixture", get_valid_fixtures(), ids=lambda f: f.name)
     def test_distance_poly(self, fixture):
         """Test distance calculation using polynomial implementation."""
-        # This will be implemented later
-        tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+        # Build lattice from seed, then tableau from lattice
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        tableau = polydist.tableau.build_tableau_poly(stab_ops)
         distance = polydist.distance.find_distance(tableau)
         
         assert distance == fixture.d, \
@@ -171,14 +173,15 @@ class TestBipartiteEntanglement:
     @pytest.mark.parametrize("fixture", get_valid_fixtures(), ids=lambda f: f.name)
     def test_entanglement_poly(self, fixture):
         """Test entanglement calculation using polynomial implementation."""
-        # This will be implemented later
-        tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+        # Build lattice from seed, then tableau from lattice
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        tableau = polydist.tableau.build_tableau_poly(stab_ops)
         
         if fixture.k > 0:
             logical_ops = polydist.distance.find_logical_operators(tableau)
-            entanglement = polydist.utils.compute_entanglement(tableau, logical_ops)
+            entanglement = polydist.qca.compute_entanglement(tableau, logical_ops)
         else:
-            entanglement = polydist.utils.compute_entanglement(tableau, None)
+            entanglement = polydist.qca.compute_entanglement(tableau, None)
         
         assert entanglement == fixture.entanglement, \
             f"Poly: Expected entanglement {fixture.entanglement}, got {entanglement}"
@@ -209,8 +212,9 @@ class TestCodeParameters:
     @pytest.mark.parametrize("fixture", get_valid_fixtures(), ids=lambda f: f.name)
     def test_code_parameters_poly(self, fixture):
         """Test complete code parameter calculation using polynomials."""
-        # This will be implemented later
-        tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+        # Build lattice from seed, then tableau from lattice
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        tableau = polydist.tableau.build_tableau_poly(stab_ops)
         rank = polydist.tableau.compute_rank_poly(tableau)
         
         n = len(fixture.seed)
@@ -218,8 +222,10 @@ class TestCodeParameters:
         
         if k > 0:
             d = polydist.distance.find_distance(tableau)
+            entanglement = polydist.qca.compute_entanglement(tableau)
         else:
             d = 0
+            entanglement = 0
         
         assert n == fixture.n, f"Poly: Expected n={fixture.n}, got {n}"
         assert k == fixture.k, f"Poly: Expected k={fixture.k}, got {k}"
@@ -246,7 +252,8 @@ class TestCrossValidation:
         gf2_tableau = build_stabilizer_tableau(fixture.seed)
         gf2_distance = find_distance(gf2_tableau)
         
-        poly_tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        poly_tableau = polydist.tableau.build_tableau_poly(stab_ops)
         poly_distance = polydist.distance.find_distance(poly_tableau)
         
         assert gf2_distance == poly_distance, \
@@ -263,12 +270,13 @@ class TestCrossValidation:
         else:
             gf2_ent = compute_entanglement(gf2_tableau, None)
         
-        poly_tableau = polydist.tableau.build_tableau_poly(fixture.seed)
+        stab_ops = polydist.lattice.build_lattice(list(fixture.seed))
+        poly_tableau = polydist.tableau.build_tableau_poly(stab_ops)
         if fixture.k > 0:
             poly_logical = polydist.distance.find_logical_operators(poly_tableau)
-            poly_ent = polydist.utils.compute_entanglement(poly_tableau, poly_logical)
+            poly_ent = polydist.qca.compute_entanglement(poly_tableau, poly_logical)
         else:
-            poly_ent = polydist.utils.compute_entanglement(poly_tableau, None)
+            poly_ent = polydist.qca.compute_entanglement(poly_tableau, None)
         
         assert gf2_ent == poly_ent, \
             f"Entanglement mismatch for {fixture.seed}: GF(2)={gf2_ent}, Poly={poly_ent}" 

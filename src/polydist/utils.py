@@ -22,7 +22,31 @@ def seed_is_valid(seed: str) -> bool:
     Returns:
         True if all cyclic translations of the seed commute with each other
     """
-    raise NotImplementedError("Polynomial seed validation not yet implemented")
+    from .polynomial import pauli_to_polynomial_vector, polynomial_symplectic_inner_product
+    
+    N = len(seed)
+    
+    # Generate all N cyclic translations of the seed
+    translations = []
+    for i in range(N):
+        # Cyclic shift: move first i characters to the end
+        shifted = seed[i:] + seed[:i]
+        translations.append(list(shifted))
+    
+    # Convert each translation to polynomial symplectic vector
+    poly_vectors = []
+    for translation in translations:
+        vec = pauli_to_polynomial_vector(translation)
+        poly_vectors.append(vec)
+    
+    # Check that all pairs commute: <vi, vj> = 0 for all i,j
+    for i in range(N):
+        for j in range(N):
+            inner_product = polynomial_symplectic_inner_product(poly_vectors[i], poly_vectors[j])
+            if not inner_product.is_zero():
+                return False
+    
+    return True
 
 
 def compute_entanglement(tableau, logical_ops: List = None) -> int:

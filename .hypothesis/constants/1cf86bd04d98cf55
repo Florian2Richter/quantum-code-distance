@@ -1,0 +1,4 @@
+# file: /home/florian/repos/quantum-code-distance/src/stabilizer/utils.py
+# hypothesis_version: 6.135.20
+
+[2.0, 'I', 'X', 'Y', 'Z', 'crossing_stabilizers', 'cut_entanglements', 'entanglement', 'half_cut_spectrum', 'max_entanglement', 'num_stabilizers', 'system_size']

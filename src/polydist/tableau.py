@@ -20,7 +20,15 @@ def build_tableau_poly(stab_ops: List[List[str]]):
     Returns:
         Polynomial tableau (matrix of Laurent polynomials)
     """
-    raise NotImplementedError("Polynomial tableau construction not yet implemented")
+    from .polynomial import pauli_to_polynomial_vector
+    
+    # Convert each stabilizer operator to polynomial symplectic vector
+    poly_tableau = []
+    for stab_op in stab_ops:
+        poly_vec = pauli_to_polynomial_vector(stab_op)
+        poly_tableau.append(poly_vec)
+    
+    return poly_tableau
 
 
 def compute_rank_poly(tableau) -> int:
@@ -33,7 +41,8 @@ def compute_rank_poly(tableau) -> int:
     Returns:
         Rank of the tableau
     """
-    raise NotImplementedError("Polynomial rank computation not yet implemented")
+    from .polynomial import rank_poly
+    return rank_poly(tableau)
 
 
 # For backward compatibility, also provide the function signatures that match stabilizer.tableau

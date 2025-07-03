@@ -7,7 +7,7 @@ from typing import Tuple, List
 from .generator import parse_seed
 from .lattice import build_lattice
 from .tableau import build_tableau, compute_rank
-from .distance import find_distance, format_symplectic_vector
+from .distance import find_distance, find_logical_operators, format_symplectic_vector
 from .qca import qca_evolution_step
 from .utils import seed_is_valid, compute_entanglement
 
@@ -71,10 +71,53 @@ class Display:
                 self.logger.info("  ... and %d more operators", len(logical_ops) - 10)
         else:
             self.logger.info("  No logical operators found.")
+    
+    def show_logical_operators_generic(self, logical_ops: List, format_func, display_all: bool = False):
+        """Display logical operators using a generic formatting function."""
+        if logical_ops:
+            self.logger.info("Found %d logical operators:", len(logical_ops))
+            ops_to_show = logical_ops if display_all else logical_ops[:10]
+            for i, vec in enumerate(ops_to_show):  
+                pauli_str = format_func(vec)
+                self.logger.info("  Logical op %d: %s", i+1, pauli_str)
+            if not display_all and len(logical_ops) > 10:
+                self.logger.info("  ... and %d more operators", len(logical_ops) - 10)
+        else:
+            self.logger.info("  No logical operators found.")
+
+
+def format_polynomial_vector(poly_vec) -> str:
+    """
+    Convert a polynomial symplectic vector to Pauli string representation.
+    
+    Args:
+        poly_vec: List of LaurentPolynomial objects representing [x|z] parts
+        
+    Returns:
+        String representation as Pauli operators
+    """
+    L = len(poly_vec) // 2
+    x_polys, z_polys = poly_vec[:L], poly_vec[L:]
+    pauli_chars = []
+    
+    for i in range(L):
+        x_nonzero = not x_polys[i].is_zero()
+        z_nonzero = not z_polys[i].is_zero()
+        
+        if not x_nonzero and not z_nonzero:
+            pauli_chars.append('I')
+        elif x_nonzero and not z_nonzero:
+            pauli_chars.append('X')
+        elif not x_nonzero and z_nonzero:
+            pauli_chars.append('Z')
+        else:  # both nonzero
+            pauli_chars.append('Y')
+    
+    return ''.join(pauli_chars)
 
 
 def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int, 
-                          display: Display, verbose: bool) -> Tuple[int, int, str]:
+                          display: Display, verbose: bool, use_polynomial: bool = False) -> Tuple[int, int, str]:
     """
     Complete analysis of a stabilizer code for a given Pauli string.
     
@@ -84,6 +127,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         step: Current time step (for display purposes)
         display: Display handler for output
         verbose: Whether to show debug info (includes tableau and disables progress)
+        use_polynomial: Whether to use polynomial formalism instead of GF(2)
         
     Returns:
         Tuple of (n_logical, rank, distance) where distance is str or int
@@ -95,25 +139,74 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
     # Build stabilizer operators
     display.debug("Generating stabilizer operators on L=%d qubits...", L)
     
-    with display.timer("Building lattice"):
-        stab_ops = build_lattice(pauli_string)
-    
-    display.show_operators(stab_ops, L)
-    
-    # Build tableau
-    with display.timer("Building tableau"):
-        tableau = build_tableau(stab_ops)
-    
-    # Compute rank
-    with display.timer("Computing rank"):
-        rank = compute_rank(tableau)
-        n_logical = L - rank
-    
-    if verbose:
-        display.section("Binary symplectic tableau (%dx%d):" % (tableau.shape[0], tableau.shape[1]))
-        # Temporarily set numpy to show full array without truncation
-        with np.printoptions(threshold=np.inf, linewidth=np.inf):
-            display.debug("Tableau:\n%s", tableau)
+    # Choose implementation based on use_polynomial flag
+    if use_polynomial:
+        display.info("Using Laurent polynomial formalism over F₂[x,x⁻¹]")
+        try:
+            import polydist
+        except ImportError:
+            display.info("Error: polydist module not available. Install polynomial dependencies.")
+            return 0, L, "Error"
+        
+        with display.timer("Building lattice"):
+            stab_ops = polydist.lattice.build_lattice(pauli_string)
+        
+        display.show_operators(stab_ops, L)
+        
+        # Build polynomial tableau
+        with display.timer("Building polynomial tableau"):
+            tableau = polydist.tableau.build_tableau_poly(stab_ops)
+        
+        # Compute rank
+        with display.timer("Computing polynomial rank"):
+            rank = polydist.tableau.compute_rank_poly(tableau)
+            n_logical = L - rank
+        
+        if verbose:
+            display.section("Polynomial tableau (%dx%d):" % (len(tableau), len(tableau[0])))
+            display.debug("Polynomial tableau structure:")
+            for i, row in enumerate(tableau[:5]):  # Show first 5 rows
+                row_str = [str(p) for p in row]
+                display.debug("  Row %d: [%s]", i, ', '.join(row_str))
+            if len(tableau) > 5:
+                display.debug("  ... and %d more rows", len(tableau) - 5)
+        
+        # Choose function implementations
+        seed_valid_func = polydist.utils.seed_is_valid
+        find_distance_func = polydist.distance.find_distance
+        find_logical_ops_func = polydist.distance.find_logical_operators
+        compute_entanglement_func = polydist.qca.compute_entanglement
+        format_vector_func = format_polynomial_vector
+        
+    else:
+        display.info("Using GF(2) stabilizer tableau formalism")
+        
+        with display.timer("Building lattice"):
+            stab_ops = build_lattice(pauli_string)
+        
+        display.show_operators(stab_ops, L)
+        
+        # Build tableau
+        with display.timer("Building tableau"):
+            tableau = build_tableau(stab_ops)
+        
+        # Compute rank
+        with display.timer("Computing rank"):
+            rank = compute_rank(tableau)
+            n_logical = L - rank
+        
+        if verbose:
+            display.section("Binary symplectic tableau (%dx%d):" % (tableau.shape[0], tableau.shape[1]))
+            # Temporarily set numpy to show full array without truncation
+            with np.printoptions(threshold=np.inf, linewidth=np.inf):
+                display.debug("Tableau:\n%s", tableau)
+        
+        # Choose function implementations
+        seed_valid_func = seed_is_valid
+        find_distance_func = find_distance
+        find_logical_ops_func = find_logical_operators
+        compute_entanglement_func = compute_entanglement
+        format_vector_func = format_symplectic_vector
     
     # Display code parameters
     display.section("Code parameters:")
@@ -133,7 +226,7 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         
         display.section("Searching for code distance...")
         with display.timer("Computing distance"):
-            distance, logical_ops = find_distance(tableau, return_logical_ops=True)
+            distance, logical_ops = find_distance_func(tableau, return_logical_ops=True)
         
         display.info("  Code distance (d): %s", distance)
         display.section("Quantum Error Correcting Code: [[%d, %d, %s]]" % (L, n_logical, distance))
@@ -141,11 +234,11 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         # Find logical operators if in debug mode
         if display.logger.isEnabledFor(logging.DEBUG) and n_logical > 0:
             display.section("Logical operators used for distance:")
-            display.show_logical_operators(logical_ops)
+            display.show_logical_operators_generic(logical_ops, format_vector_func)
 
     # Compute entanglement across half cut
     with display.timer("Computing entanglement"):
-        ent = compute_entanglement(tableau, logical_ops if n_logical > 0 else None)
+        ent = compute_entanglement_func(tableau, logical_ops if n_logical > 0 else None)
     display.info("  Bipartite entanglement: %d", ent)
     
     return n_logical, rank, distance
@@ -168,7 +261,12 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
     default=0,
     help="Number of QCA time evolution steps to perform (default: 0, no evolution)."
 )
-def main(seed: str, verbose: bool, time_steps: int):
+@click.option(
+    "--polynomial", "-p",
+    is_flag=True,
+    help="Use Laurent polynomial formalism instead of GF(2) stabilizer tableaux (experimental)."
+)
+def main(seed: str, verbose: bool, time_steps: int, polynomial: bool):
     """
     CLI entry point for building a stabilizer code on a 1D ring.
     
@@ -179,7 +277,10 @@ def main(seed: str, verbose: bool, time_steps: int):
     configure_logging(verbose)
     display = Display()
     
+    # Display which formalism is being used
+    formalism = "Laurent polynomial formalism over F₂[x,x⁻¹]" if polynomial else "GF(2) stabilizer tableau formalism"
     display.info("Building stabilizer code from seed: %s", seed)
+    display.info("Using %s", formalism)
     
     total_start_time = time.time() if verbose else None
     
@@ -191,7 +292,16 @@ def main(seed: str, verbose: bool, time_steps: int):
         
         # Check if seed generates commuting stabilizers
         with display.timer("Validating seed commutativity"):
-            is_valid = seed_is_valid(seed)
+            if polynomial:
+                try:
+                    import polydist
+                    is_valid = polydist.utils.seed_is_valid(seed)
+                except ImportError:
+                    display.info("Error: polydist module not available. Install polynomial dependencies.")
+                    return
+            else:
+                is_valid = seed_is_valid(seed)
+                
         display.debug("Seed commutativity check: %s", "PASSED" if is_valid else "FAILED")
         if not is_valid:
             display.info("Error: Cyclic translations of this seed do not all commute")
@@ -213,7 +323,7 @@ def main(seed: str, verbose: bool, time_steps: int):
         
         # Run full analysis for current state  
         n_logical, rank, distance = analyze_stabilizer_code(
-            current_pauli, L, step, display, verbose
+            current_pauli, L, step, display, verbose, polynomial
         )
         
         # Early exit if no logical qubits and no time evolution requested
