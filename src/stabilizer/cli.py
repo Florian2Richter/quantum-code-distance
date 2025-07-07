@@ -144,38 +144,55 @@ def analyze_stabilizer_code(pauli_string: List[str], L: int, step: int,
         display.info("Using Laurent polynomial formalism over F₂[x,x⁻¹]")
         try:
             import polydist
+            from polydist.orthogonality import check_seed_orthogonality, analyze_seed_orthogonality
+            from polydist.gcd import compute_logical_qubits, analyze_gcd_computation
         except ImportError:
             display.info("Error: polydist module not available. Install polynomial dependencies.")
             return 0, L, "Error"
         
-        with display.timer("Building lattice"):
-            stab_ops = polydist.lattice.build_lattice(pauli_string)
-        
-        display.show_operators(stab_ops, L)
-        
-        # Build polynomial tableau
-        with display.timer("Building polynomial tableau"):
-            tableau = polydist.tableau.build_tableau_poly(stab_ops)
-        
-        # Compute rank
-        with display.timer("Computing polynomial rank"):
-            rank = polydist.tableau.compute_rank_poly(tableau)
-            n_logical = L - rank
-        
+        # Check for orthogonality
+        with display.timer("Checking seed orthogonality"):
+            seed_str = ''.join(pauli_string)
+            is_orthogonal = check_seed_orthogonality(seed_str)
+            
+        if not is_orthogonal:
+            display.info("Error: Seed is not self-orthogonal - cannot form valid stabilizer code")
+            if verbose:
+                analysis = analyze_seed_orthogonality(seed_str, verbose=True)
+                display.debug("Orthogonality analysis:")
+                display.debug("  s_X(x) = %s", analysis['s_X'])
+                display.debug("  s_Z(x) = %s", analysis['s_Z'])
+                display.debug("  Orthogonality polynomial = %s", analysis['orthogonality_polynomial'])
+            return 0, L, "Error"
+        else:
+            display.debug("Seed orthogonality check: PASSED")
+
+        # Compute k via gcd
+        with display.timer("Computing logical qubits via GCD"):
+            k = compute_logical_qubits(seed_str)
+            
         if verbose:
-            display.section("Polynomial tableau (%dx%d):" % (len(tableau), len(tableau[0])))
-            display.debug("Polynomial tableau structure:")
-            for i, row in enumerate(tableau[:5]):  # Show first 5 rows
-                row_str = [str(p) for p in row]
-                display.debug("  Row %d: [%s]", i, ', '.join(row_str))
-            if len(tableau) > 5:
-                display.debug("  ... and %d more rows", len(tableau) - 5)
+            gcd_analysis = analyze_gcd_computation(seed_str, verbose=True)
+            display.debug("GCD analysis:")
+            display.debug("  s_X(x) = %s", gcd_analysis['s_X'])
+            display.debug("  s_Z(x) = %s", gcd_analysis['s_Z'])
+            display.debug("  gcd polynomial = %s", gcd_analysis['gcd_polynomial'])
+            display.debug("  k (logical qubits) = %d", gcd_analysis['k_logical'])
         
-        # Choose function implementations
-        seed_valid_func = polydist.utils.seed_is_valid
-        find_distance_func = polydist.distance.find_distance
-        find_logical_ops_func = polydist.distance.find_logical_operators
-        compute_entanglement_func = polydist.qca.compute_entanglement
+        n_logical = k
+        rank = L - k  # In polynomial formalism, rank relates to the constraint structure
+        
+        # TODO: build logical Z generator
+        # TODO: build matching logical X generator
+        # TODO: spread out into k logical qubits
+        # TODO: compute distance
+        # TODO: compute entanglement
+
+        # For now, return placeholder values
+        rank = L  # Placeholder - need to implement polynomial rank computation
+        n_logical = 0  # Placeholder
+        distance = "Not implemented"
+        
         format_vector_func = format_polynomial_vector
         
     else:
@@ -294,8 +311,8 @@ def main(seed: str, verbose: bool, time_steps: int, polynomial: bool):
         with display.timer("Validating seed commutativity"):
             if polynomial:
                 try:
-                    import polydist
-                    is_valid = polydist.utils.seed_is_valid(seed)
+                    from polydist.orthogonality import check_seed_orthogonality
+                    is_valid = check_seed_orthogonality(seed)
                 except ImportError:
                     display.info("Error: polydist module not available. Install polynomial dependencies.")
                     return

@@ -1,16 +1,11 @@
 """
-Laurent polynomial formalism for stabilizer codes.
+Polynomial distance computation for stabilizer codes.
 
-This module implements stabilizer operations using Laurent polynomials over F₂[x,x⁻¹]
-instead of GF(2) bit-vectors, maintaining exact equivalence with the original implementation.
+This package implements stabilizer code analysis using Laurent polynomials
+over F₂[x,x⁻¹] modulo (x^N - 1).
 """
 
-__version__ = "0.1.0"
+from .orthogonality import check_seed_orthogonality
+from .gcd import compute_logical_qubits
 
-# Import sub-modules
-from . import lattice
-from . import tableau
-from . import distance
-from . import utils
-from . import polynomial
-from . import qca 
+__all__ = ['check_seed_orthogonality', 'compute_logical_qubits'] 
