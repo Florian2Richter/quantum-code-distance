@@ -259,4 +259,303 @@ def analyze_logical_operator_extraction(seed: str, verbose: bool = False) -> Dic
             'error': str(e),
             'verification': None,
             'is_verified': False
-        } 
+        }
+
+
+def reverse_polynomial(poly: LaurentPolynomialGF2, N: int) -> LaurentPolynomialGF2:
+    """
+    Compute polynomial reversal: p_rev(x) = x^(deg p) * p(x^-1).
+    
+    In the quotient ring modulo x^N - 1, this flips the exponents around
+    the center and adjusts by the degree.
+    
+    Args:
+        poly: Input Laurent polynomial
+        N: Ring size for quotient ring Z[x]/(x^N - 1)
+        
+    Returns:
+        Reversed polynomial
+    """
+    if poly.is_zero():
+        return LaurentPolynomialGF2({}, N)
+    
+    # Find the actual degree considering the quotient ring
+    max_exp = max(poly.coeffs.keys())
+    
+    # For reversal, we map exponent i to (max_exp - i) mod N
+    reversed_coeffs = {}
+    for exp, coeff in poly.coeffs.items():
+        if coeff == 1:  # Only keep non-zero coefficients
+            new_exp = (max_exp - exp) % N
+            reversed_coeffs[new_exp] = 1
+    
+    return LaurentPolynomialGF2(reversed_coeffs, N)
+
+
+def extract_logical_x_operator(v: LaurentPolynomialGF2, u: LaurentPolynomialGF2, N: int) -> Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2]:
+    """
+    Extract logical X operator that satisfies symplectic orthogonality with logical Z.
+    
+    Algorithm:
+    1. Reverse v and u: vrev(x) = x^(deg v) * v(x^-1), urev(x) = x^(deg u) * u(x^-1)
+    2. Solve r'(x) * vrev(x) + t'(x) * urev(x) = 1 (mod x^N - 1) using extended GCD
+    3. Reverse back: r(x) = t'(x^-1), t(x) = r'(x^-1)
+    4. Return LX(x) = (r(x), t(x))
+    
+    This ensures LZ^T * J * LX ≡ 1 while both commute with stabilizers.
+    
+    Args:
+        v, u: Logical Z operator components (v, u)
+        N: Ring size for quotient ring Z[x]/(x^N - 1)
+        
+    Returns:
+        Tuple (r, t) representing logical X operator LX = (r, t)
+    """
+    # Step 1: Reverse v and u polynomials
+    vrev = reverse_polynomial(v, N)
+    urev = reverse_polynomial(u, N)
+    
+    # Step 2: Convert to full polynomials for extended GCD
+    vrev_full = PolynomialGF2.from_laurent(vrev)
+    urev_full = PolynomialGF2.from_laurent(urev)
+    
+    # Create target polynomial: 1
+    target = PolynomialGF2({0: 1})
+    
+    # We need to solve r' * vrev + t' * urev = 1 (mod x^N - 1)
+    # This is equivalent to finding the extended GCD coefficients
+    # where gcd(vrev, urev) should divide 1, so gcd should be 1
+    
+    # First, check if vrev and urev are coprime modulo x^N - 1
+    x_n_minus_1 = create_x_power_minus_one(N)
+    
+    # Use extended GCD in the quotient ring
+    # We solve: r' * vrev + t' * urev ≡ gcd(vrev, urev) (mod x^N - 1)
+    gcd_poly, r_prime_poly, t_prime_poly = extended_gcd_polynomials(vrev_full, urev_full)
+    
+    # If gcd is not 1, we need to work in the quotient ring
+    # Compute gcd with x^N - 1 to ensure we can find inverse
+    final_gcd, alpha, beta = extended_gcd_polynomials(gcd_poly, x_n_minus_1)
+    
+    # Combine to get final coefficients: multiply by alpha to get unit
+    r_prime_final = (alpha * r_prime_poly)
+    t_prime_final = (alpha * t_prime_poly)
+    
+    # Convert back to Laurent polynomials in quotient ring
+    r_prime_laurent = r_prime_final.to_laurent(N)
+    t_prime_laurent = t_prime_final.to_laurent(N)
+    
+    # Step 3: Reverse back to get final r and t
+    # r(x) = t'(x^-1), t(x) = r'(x^-1)
+    r = reverse_polynomial(t_prime_laurent, N)
+    t = reverse_polynomial(r_prime_laurent, N)
+    
+    return r, t
+
+
+def generate_logical_qubit_operators(LX: Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2], 
+                                   LZ: Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2], 
+                                   k: int, N: int) -> Dict[str, List[Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2]]]:
+    """
+    Generate k independent logical qubit operators using polynomial shifts.
+    
+    The shifts Xi = LX(x) * x^i and Zi = LZ(x) * x^i for i = 0, ..., k-1
+    give k independent logical qubit operators.
+    
+    Args:
+        LX: Logical X operator (r, t)
+        LZ: Logical Z operator (v, u) 
+        k: Number of logical qubits
+        N: Ring size for quotient ring Z[x]/(x^N - 1)
+        
+    Returns:
+        Dictionary with 'X_operators' and 'Z_operators' lists of k operators each
+    """
+    r, t = LX
+    v, u = LZ
+    
+    X_operators = []
+    Z_operators = []
+    
+    for i in range(k):
+        # Create shift polynomial x^i
+        shift_coeffs = {i % N: 1}
+        shift = LaurentPolynomialGF2(shift_coeffs, N)
+        
+        # Apply shift: Xi = LX * x^i = (r * x^i, t * x^i)
+        Xi_r = r * shift
+        Xi_t = t * shift
+        X_operators.append((Xi_r, Xi_t))
+        
+        # Apply shift: Zi = LZ * x^i = (v * x^i, u * x^i)  
+        Zi_v = v * shift
+        Zi_u = u * shift
+        Z_operators.append((Zi_v, Zi_u))
+    
+    return {
+        'X_operators': X_operators,
+        'Z_operators': Z_operators
+    }
+
+
+def verify_symplectic_orthogonality(LX: Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2],
+                                   LZ: Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2],
+                                   N: int) -> bool:
+    """
+    Verify that LZ^T * J * LX ≡ 1 (mod x^N - 1) where J is the symplectic form.
+    
+    For Pauli operators, the symplectic form gives:
+    LZ^T * J * LX = v*t + u*r (in the quotient ring)
+    
+    Args:
+        LX: Logical X operator (r, t)
+        LZ: Logical Z operator (v, u)
+        N: Ring size
+        
+    Returns:
+        True if symplectic orthogonality holds
+    """
+    r, t = LX
+    v, u = LZ
+    
+    # Compute symplectic product: v*t + u*r
+    term1 = v * t
+    term2 = u * r
+    symplectic_product = term1 + term2
+    
+    # Should equal 1 in the quotient ring
+    expected = LaurentPolynomialGF2({0: 1}, N)
+    difference = symplectic_product + expected  # Addition = subtraction in GF(2)
+    
+    return difference.is_zero()
+
+
+def extract_complete_logical_operators(seed: str, verbose: bool = False) -> Dict[str, any]:
+    """
+    Complete logical operator extraction: Z operators, matching X operators, and k logical qubits.
+    
+    Implements the full algorithm:
+    1. Extract logical Z operator using extended Euclidean algorithm
+    2. Build matching logical X operator using symplectic form
+    3. Spread into k logical qubits using polynomial shifts
+    4. Verify all commutation relations
+    
+    Args:
+        seed: Pauli seed string
+        verbose: Whether to include detailed intermediate results
+        
+    Returns:
+        Dictionary with complete logical operator analysis
+    """
+    N = len(seed)
+    
+    try:
+        # Step 1: Extract logical Z operator
+        v, u = extract_logical_z_operator(seed)
+        LZ = (v, u)
+        
+        # Step 2: Extract matching logical X operator
+        r, t = extract_logical_x_operator(v, u, N)
+        LX = (r, t)
+        
+        # Step 3: Verify symplectic orthogonality
+        symplectic_correct = verify_symplectic_orthogonality(LX, LZ, N)
+        
+        # Step 4: Determine number of logical qubits
+        from .gcd import compute_logical_qubits
+        k = compute_logical_qubits(seed)
+        
+        # Step 5: Generate k logical qubit operators
+        logical_qubits = generate_logical_qubit_operators(LX, LZ, k, N)
+        
+        # Step 6: Verify original logical Z operator
+        z_verification = verify_logical_operator(seed, v, u)
+        
+        result = {
+            'seed': seed,
+            'N': N,
+            'k_logical_qubits': k,
+            'extraction_successful': True,
+            'logical_Z_operator': (str(v), str(u)),
+            'logical_X_operator': (str(r), str(t)),
+            'symplectic_orthogonality_verified': symplectic_correct,
+            'z_operator_verified': z_verification['is_correct'],
+            'logical_qubit_operators': {
+                'X_ops': [(str(Xi[0]), str(Xi[1])) for Xi in logical_qubits['X_operators']],
+                'Z_ops': [(str(Zi[0]), str(Zi[1])) for Zi in logical_qubits['Z_operators']]
+            }
+        }
+        
+        if verbose:
+            # Add detailed intermediate results
+            pauli_list = list(seed)
+            s_X_laurent = LaurentPolynomialGF2.from_pauli_part(pauli_list, 'X', N)
+            s_Z_laurent = LaurentPolynomialGF2.from_pauli_part(pauli_list, 'Z', N)
+            
+            vrev = reverse_polynomial(v, N)
+            urev = reverse_polynomial(u, N)
+            
+            result['verbose_details'] = {
+                's_X_polynomial': str(s_X_laurent),
+                's_Z_polynomial': str(s_Z_laurent),
+                'v_reversed': str(vrev),
+                'u_reversed': str(urev),
+                'symplectic_product': str((v * t) + (u * r)),
+                'all_verification_details': z_verification
+            }
+        
+        return result
+        
+    except Exception as e:
+        return {
+            'seed': seed,
+            'N': N,
+            'k_logical_qubits': 0,
+            'extraction_successful': False,
+            'error': str(e),
+            'symplectic_orthogonality_verified': False,
+            'z_operator_verified': False
+        }
+
+
+def extract_logical_operators_for_distance(seed: str) -> Tuple[bool, int, List[Tuple[LaurentPolynomialGF2, LaurentPolynomialGF2]]]:
+    """
+    Extract logical operators as polynomial objects for distance calculation.
+    
+    Args:
+        seed: Pauli seed string
+        
+    Returns:
+        Tuple of (success, k, logical_operators) where logical_operators is a list
+        of (v, u) polynomial pairs representing both X and Z logical operators
+    """
+    N = len(seed)
+    
+    try:
+        # Step 1: Extract logical Z operator
+        v, u = extract_logical_z_operator(seed)
+        LZ = (v, u)
+        
+        # Step 2: Extract matching logical X operator  
+        r, t = extract_logical_x_operator(v, u, N)
+        LX = (r, t)
+        
+        # Step 3: Determine number of logical qubits
+        from .gcd import compute_logical_qubits
+        k = compute_logical_qubits(seed)
+        
+        if k == 0:
+            return True, 0, []
+        
+        # Step 4: Generate k logical qubit operators
+        logical_qubits = generate_logical_qubit_operators(LX, LZ, k, N)
+        
+        # Combine X and Z operators into single list
+        all_operators = []
+        all_operators.extend(logical_qubits['Z_operators'])  # Add Z operators first
+        all_operators.extend(logical_qubits['X_operators'])  # Add X operators  
+        
+        return True, k, all_operators
+        
+    except Exception as e:
+        return False, 0, [] 
